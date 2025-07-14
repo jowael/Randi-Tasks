@@ -165,7 +165,7 @@
 
 <main
   id="calculatorRef"
-  class="m-4 flex h-[500px] justify-center rounded-3xl bg-gradient-to-b from-gray-100 to-purple-100 p-4 md:m-28 dark:bg-gradient-to-b dark:from-gray-700 dark:to-gray-800"
+  class="m-4 flex h-[500px] justify-center rounded-3xl bg-gradient-to-b from-gray-100 to-purple-100 p-4 select-none md:m-28 dark:bg-gradient-to-b dark:from-gray-700 dark:to-gray-800"
 >
   <div
     class="w-full max-w-md overflow-hidden rounded-2xl shadow-2xl dark:backdrop-blur-2xl"
