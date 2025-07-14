@@ -178,7 +178,7 @@
         {calculation || "History"}
       </div>
       <div
-        class="h-12 truncate overflow-hidden text-3xl font-semibold dark:text-white"
+        class="h-12 max-w-[263px] truncate overflow-hidden text-3xl font-semibold dark:text-white"
       >
         {displayValue}
       </div>
