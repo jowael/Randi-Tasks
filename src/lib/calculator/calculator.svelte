@@ -2,17 +2,20 @@
   import { cn } from "$lib/utils";
   import { btns } from "./data.svelte";
 
-  // Calculator state
   let calculation = $state("History");
   let displayValue = $state("0");
   let previousValue = $state(0);
   let currentOperator = $state<string | null>(null);
   let resetOnNextInput = $state(false);
-  let lastInputWasOperator = $state(false); // Track operator input
+  let lastInputWasOperator = $state(false);
+  let lastInputType = $state<
+    "number" | "operator" | "decimal" | "equals" | "clear" | "delete"
+  >("clear");
+  let repeatOperand = $state<number | null>(null);
+  let lastOperator = $state<string | null>(null);
 
   // Reactive button references
   let buttonRefs: Record<string, HTMLButtonElement> = {};
-  let reactiveRefs = $derived(buttonRefs); // Make the object reactive
 
   // Keyboard to button mapping
   const keyMap: Record<string, string> = {
@@ -51,101 +54,195 @@
       },
     };
   }
+  function formatNumber(num: number): string {
+    // Convert to string to handle floating-point precision
+    const str = num.toString();
 
-  // Enhanced calculator logic
+    // Check if it's a number with unnecessary decimal places
+    if (str.includes(".")) {
+      // Remove trailing zeros
+      const trimmed = str.replace(/\.?0+$/, "");
+      // If we removed all decimals, return the integer part
+      if (trimmed.endsWith(".")) {
+        return trimmed.slice(0, -1);
+      }
+      return trimmed;
+    }
+    return str;
+  }
+
+  function calculate(a: number, operator: string | null, b: number): number {
+    if (!operator) return b;
+    switch (operator) {
+      case "+":
+        return a + b;
+      case "-":
+        return a - b;
+      case "*":
+        return a * b;
+      case "/":
+        return a / b;
+      default:
+        return b;
+    }
+  }
+
   function handleInput(value: string) {
-    if (resetOnNextInput && !["+", "-", "*", "/"].includes(value)) {
-      displayValue = "0";
-      resetOnNextInput = false;
+    // Handle repeating operations
+    if (
+      value === "=" &&
+      lastInputType === "equals" &&
+      lastOperator &&
+      repeatOperand !== null
+    ) {
+      const currentValue = parseFloat(displayValue);
+      const result = calculate(currentValue, lastOperator, repeatOperand);
+      calculation = `${currentValue} ${lastOperator} ${repeatOperand} = ${formatNumber(result)}`;
+      displayValue = formatNumber(result);
+      return;
     }
 
-    // Handle operator switching
+    // Handle numbers
+    if (!["+", "-", "*", "/", "DEL", "C", "=", "."].includes(value)) {
+      // Reset state when starting new number after equals
+      if (lastInputType === "equals") {
+        resetCalculatorState();
+      }
+      if (
+        resetOnNextInput ||
+        displayValue === "0" ||
+        lastInputType === "operator"
+      ) {
+        displayValue = value;
+        resetOnNextInput = false;
+        lastInputType = "number";
+        return;
+      }
+      displayValue += value;
+      lastInputType = "number";
+      return;
+    }
+
+    // Handle operators
     if (["+", "-", "*", "/"].includes(value)) {
-      if (lastInputWasOperator) {
-        // Allow switching operators without resetting
+      if (lastInputType === "operator") {
         currentOperator = value;
         return;
       }
-      lastInputWasOperator = true;
-    } else {
-      lastInputWasOperator = false;
-    }
 
-    // Existing logic with fixes
-    if (value === "=" && !currentOperator) return;
-    if (value === "C") {
-      displayValue = "0";
-      currentOperator = null;
-      previousValue = 0;
-      resetOnNextInput = false;
-      lastInputWasOperator = false;
+      // Handle operator after equals
+      if (lastInputType === "equals") {
+        previousValue = parseFloat(displayValue);
+        currentOperator = value;
+        lastInputType = "operator";
+        resetOnNextInput = true;
+        return;
+      }
+      // Perform calculation if we have a previous operation
+      if (currentOperator && previousValue !== 0) {
+        const currentValue = parseFloat(displayValue);
+        const result = calculate(previousValue, currentOperator, currentValue);
+        displayValue = formatNumber(result);
+        previousValue = result;
+      } else {
+        previousValue = parseFloat(displayValue);
+      }
+
+      // Perform calculation if we have a previous operation
+      if (currentOperator && previousValue !== 0) {
+        const currentValue = parseFloat(displayValue);
+        const result = calculate(previousValue, currentOperator, currentValue);
+        displayValue = result.toString();
+        previousValue = result;
+      } else {
+        previousValue = parseFloat(displayValue);
+      }
+
+      currentOperator = value;
+      lastInputType = "operator";
+      resetOnNextInput = true;
       return;
     }
 
-    if (value === "DEL") {
-      if (displayValue.length === 1 || resetOnNextInput) {
-        displayValue = "0";
-        resetOnNextInput = false;
-      } else {
-        displayValue = displayValue.slice(0, -1);
+    // Handle equals
+    if (value === "=") {
+      if (currentOperator && previousValue !== 0) {
+        const currentValue = parseFloat(displayValue);
+        const result = calculate(previousValue, currentOperator, currentValue);
+
+        // Store for repeating operations
+        repeatOperand = currentValue;
+        lastOperator = currentOperator;
+
+        calculation = `${previousValue} ${currentOperator} ${currentValue} = ${formatNumber(result)}`;
+        displayValue = formatNumber(result);
+        previousValue = result;
+        lastInputType = "equals";
+        resetOnNextInput = true;
       }
       return;
     }
 
+    // Handle clear
+    if (value === "C") {
+      resetCalculatorState();
+      displayValue = "0";
+      return;
+    }
+
+    // Handle delete - FIXED FOR AFTER EQUALS
+    if (value === "DEL") {
+      // Reset state when deleting after equals
+      if (lastInputType === "equals") {
+        resetCalculatorState();
+      }
+
+      if (resetOnNextInput) {
+        displayValue = "0";
+        resetOnNextInput = false;
+      } else if (displayValue.length === 1) {
+        displayValue = "0";
+      } else {
+        displayValue = displayValue.slice(0, -1);
+      }
+      lastInputType = "delete";
+      return;
+    }
+
+    // Handle decimal
     if (value === ".") {
+      // Reset state when decimal after equals
+      if (lastInputType === "equals") {
+        resetCalculatorState();
+        displayValue = "0.";
+        lastInputType = "decimal";
+        return;
+      }
+
       if (resetOnNextInput) {
         displayValue = "0.";
         resetOnNextInput = false;
+        lastInputType = "decimal";
         return;
       }
       if (!displayValue.includes(".")) {
         displayValue += ".";
+        lastInputType = "decimal";
       }
       return;
-    }
-
-    if (["+", "-", "*", "/"].includes(value)) {
-      currentOperator = value;
-      previousValue = parseFloat(displayValue);
-      resetOnNextInput = true;
-      return;
-    }
-
-    if (value === "=" && currentOperator) {
-      const currentValue = parseFloat(displayValue);
-      let result = 0;
-      switch (currentOperator) {
-        case "+":
-          result = previousValue + currentValue;
-          break;
-        case "-":
-          result = previousValue - currentValue;
-          break;
-        case "*":
-          result = previousValue * currentValue;
-          break;
-        case "/":
-          result = previousValue / currentValue;
-          break;
-      }
-
-      calculation = `${previousValue} ${currentOperator} ${currentValue} = ${result}`;
-      displayValue = result.toString();
-      currentOperator = null;
-      resetOnNextInput = true;
-      return;
-    }
-
-    // Handle numeric input
-    if (resetOnNextInput) {
-      displayValue = value;
-      resetOnNextInput = false;
-    } else {
-      displayValue = displayValue === "0" ? value : displayValue + value;
     }
   }
 
-  // Enhanced keyboard handling
+  // Helper function to reset calculator state
+  function resetCalculatorState() {
+    previousValue = 0;
+    currentOperator = null;
+    lastOperator = null;
+    repeatOperand = null;
+    resetOnNextInput = true;
+    lastInputWasOperator = false;
+  }
+  // keyboard handling
   function onKeyDown(e: KeyboardEvent) {
     const key = e.key;
     const value = keyMap[key];
